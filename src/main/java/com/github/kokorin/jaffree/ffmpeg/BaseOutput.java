@@ -274,7 +274,8 @@ public class BaseOutput<T extends BaseOutput<T>> extends BaseInOut<T> implements
      */
     @Override
     public final List<String> buildArguments() {
-        List<String> result = new ArrayList<>();
+        List<String> result = super.buildArguments();
+        result = new ArrayList<>(result);
 
         if (outputPosition != null) {
             result.addAll(Arrays.asList("-to", formatDuration(outputPosition)));
@@ -292,8 +293,6 @@ public class BaseOutput<T extends BaseOutput<T>> extends BaseInOut<T> implements
         }
 
         result.addAll(toArguments("-frames", frames));
-
-        result.addAll(buildCommonArguments());
 
         for (Mapping map : maps) {
             result.addAll(Arrays.asList("-map", map.toValue()));

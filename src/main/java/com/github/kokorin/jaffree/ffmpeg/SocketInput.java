@@ -17,48 +17,39 @@
 
 package com.github.kokorin.jaffree.ffmpeg;
 
+import com.github.kokorin.jaffree.net.TcpServer;
+import com.github.kokorin.jaffree.util.Consumer;
+
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 
 public abstract class SocketInput<T extends SocketInput<T>> extends BaseInput<T> implements Input {
-    private final ServerSocket serverSocket;
+    private final String protocol;
+    private final String suffix;
 
     public SocketInput(String protocol) {
         this(protocol, "");
     }
 
     public SocketInput(String protocol, String suffix) {
-        this.serverSocket = allocateSocket();
-        super.setInput(protocol + "://127.0.0.1:" + serverSocket.getLocalPort() + suffix);
-    }
-
-    protected ServerSocket allocateSocket() {
-        try {
-            return new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to allocate socket", e);
-        }
+        this.protocol = protocol;
+        this.suffix = suffix;
     }
 
     @Override
     public final Runnable helperThread() {
         final Negotiator negotiator = negotiator();
 
-        return new Runnable() {
+        return new TcpServer(portConsumer()) {
             @Override
-            public void run() {
-                try {
-                    negotiator.negotiateAndClose(serverSocket);
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to negotiate via socket " + serverSocket, e);
-                }
+            public void serve(ServerSocket serverSocket) throws IOException {
+                negotiator.negotiateAndClose(serverSocket);
             }
         };
     }
 
     @Override
-    public T setInput(String input) {
+    public final T setInput(String input) {
         throw new RuntimeException("SocketInput input can't be changed");
     }
 
@@ -70,17 +61,27 @@ public abstract class SocketInput<T extends SocketInput<T>> extends BaseInput<T>
     // TODO: make protected?
     abstract Negotiator negotiator();
 
+    //TODO synchronization!
+    private Consumer<Integer> portConsumer() {
+        return new Consumer<Integer>() {
+            @Override
+            public void consume(Integer port) {
+                SocketInput.super.setInput(protocol + "://127.0.0.1:" + port + suffix);
+            }
+        };
+    }
+
     /**
      * {@link Negotiator} is capable of integrating with ffmpeg via Socket-based connection.
      */
     // TODO: make protected?
-    interface Negotiator {
+    abstract class Negotiator {
         /**
          * Negotiator <b>must</b> close passed in {@code ServerSocket}
          *
          * @param serverSocket socket to communicate
          * @throws IOException
          */
-        void negotiateAndClose(ServerSocket serverSocket) throws IOException;
+        abstract void negotiateAndClose(ServerSocket serverSocket) throws IOException;
     }
 }

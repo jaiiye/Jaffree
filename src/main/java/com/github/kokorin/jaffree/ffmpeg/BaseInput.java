@@ -84,7 +84,8 @@ public abstract class BaseInput<T extends BaseInput<T>> extends BaseInOut<T> imp
      */
     @Override
     public final List<String> buildArguments() {
-        List<String> result = new ArrayList<>();
+        List<String> result = super.buildArguments();
+        result = new ArrayList<>(result);
 
         if (streamLoop != null) {
             result.addAll(Arrays.asList("-stream_loop", streamLoop.toString()));
@@ -93,8 +94,6 @@ public abstract class BaseInput<T extends BaseInput<T>> extends BaseInOut<T> imp
         if (readAtFrameRate) {
             result.add("-re");
         }
-
-        result.addAll(buildCommonArguments());
 
         if (input == null) {
             throw new IllegalArgumentException("Input must be specified");

@@ -17,6 +17,7 @@
 
 package com.github.kokorin.jaffree.process;
 
+import com.github.kokorin.jaffree.util.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +36,7 @@ public class ProcessHandler<T> {
     private StdReader<T> stdErrReader = new GobblingStdReader<>();
     private List<Runnable> runnables = null;
     private Stopper stopper = null;
-    private List<String> arguments = Collections.emptyList();
+    private Supplier<List<String>> arguments = null;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProcessHandler.class);
 
@@ -70,28 +71,46 @@ public class ProcessHandler<T> {
         return this;
     }
 
-    public synchronized ProcessHandler<T> setArguments(List<String> arguments) {
+    public synchronized ProcessHandler<T> setArguments(final List<String> arguments) {
+        return setArguments(new Supplier<List<String>>() {
+            @Override
+            public List<String> supply() {
+                return arguments;
+            }
+        });
+    }
+
+    public synchronized ProcessHandler<T> setArguments(Supplier<List<String>> arguments) {
         this.arguments = arguments;
         return this;
     }
 
     public synchronized T execute() {
-        List<String> command = new ArrayList<>();
-        command.add(executable.toString());
-        command.addAll(arguments);
-
-        LOGGER.info("Command constructed:\n{}", joinArguments(command));
 
         Process process = null;
         try {
             LOGGER.info("Starting process: {}", executable);
-            process = new ProcessBuilder(command)
-                    .start();
-            if (stopper != null) {
-                stopper.setProcess(process);
-            }
 
-            return interactWithProcess(process);
+            Executor executor = new Executor(contextName);
+            try {
+                startAdditionalRunnables(executor);
+
+                List<String> command = new ArrayList<>();
+                command.add(executable.toString());
+                command.addAll(arguments.supply());
+
+                LOGGER.info("Command constructed:\n{}", joinArguments(command));
+
+                process = new ProcessBuilder(command)
+                        .start();
+                if (stopper != null) {
+                    stopper.setProcess(process);
+                }
+
+                return interactWithProcess(process, executor);
+            } finally {
+                executor.stop();
+            }
         } catch (IOException e) {
             throw new RuntimeException("Failed to start process.", e);
         } finally {
@@ -107,14 +126,13 @@ public class ProcessHandler<T> {
         }
     }
 
-    protected T interactWithProcess(Process process) {
+    protected T interactWithProcess(Process process, Executor executor) {
         AtomicReference<T> resultRef = new AtomicReference<>();
-        Executor executor = null;
         Integer status = null;
         Exception interrupted = null;
 
         try {
-            executor = startExecution(process, resultRef);
+            startReadingOutput(process, executor, resultRef);
 
             LOGGER.info("Waiting for process to finish");
             status = process.waitFor();
@@ -124,10 +142,6 @@ public class ProcessHandler<T> {
         } catch (InterruptedException e) {
             LOGGER.warn("Process has been interrupted");
             interrupted = e;
-        } finally {
-            if (executor != null) {
-                executor.stop();
-            }
         }
 
         Exception exception = null;
@@ -154,9 +168,18 @@ public class ProcessHandler<T> {
         return result;
     }
 
-    protected Executor startExecution(final Process process, final AtomicReference<T> resultReference) {
-        Executor executor = new Executor(contextName);
+    protected void startAdditionalRunnables(final Executor executor) {
+        if (runnables != null) {
+            for (int i = 0; i < runnables.size(); i++) {
+                Runnable runnable = runnables.get(i);
+                executor.execute("Runnable-" + i, runnable);
+            }
+        }
+    }
 
+    protected void startReadingOutput(final Process process,
+                                      final Executor executor,
+                                      final AtomicReference<T> resultReference) {
         LOGGER.debug("Starting IO interaction with process");
 
         if (stdErrReader != null) {
@@ -188,15 +211,6 @@ public class ProcessHandler<T> {
                 }
             });
         }
-
-        if (runnables != null) {
-            for (int i = 0; i < runnables.size(); i++) {
-                Runnable runnable = runnables.get(i);
-                executor.execute("Runnable-" + i, runnable);
-            }
-        }
-
-        return executor;
     }
 
     protected static String joinArguments(List<String> arguments) {

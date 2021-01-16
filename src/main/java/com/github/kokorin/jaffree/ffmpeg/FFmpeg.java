@@ -23,6 +23,7 @@ import com.github.kokorin.jaffree.process.LoggingStdReader;
 import com.github.kokorin.jaffree.process.ProcessHandler;
 import com.github.kokorin.jaffree.process.StdReader;
 import com.github.kokorin.jaffree.process.Stopper;
+import com.github.kokorin.jaffree.util.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -372,7 +373,7 @@ public class FFmpeg {
                 .setStdErrReader(createStdErrReader())
                 .setStdOutReader(createStdOutReader())
                 .setRunnables(helpers)
-                .setArguments(buildArguments());
+                .setArguments(argumentsSupplier());
     }
 
     protected Stopper createStopper() {
@@ -402,6 +403,14 @@ public class FFmpeg {
         return new LoggingStdReader<>();
     }
 
+    protected Supplier<List<String>> argumentsSupplier() {
+        return new Supplier<List<String>>() {
+            @Override
+            public List<String> supply() {
+                return buildArguments();
+            }
+        };
+    }
     /**
      * Constructs ffmpeg command line.
      * <p>
